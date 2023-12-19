@@ -4,51 +4,82 @@
 //
 //  Created by Leo  on 16.12.23.
 //
+
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import PhotosUI
 import SwiftUI
 
 struct ContentView: View {
-    @State private var image: Image?
+    @State private var processedImage: Image?
+    @State private var filterIntensity = 0.5
+    
+    @State private var selectedItem: PhotosPickerItem?
+    
+    @State private var currentFilter = CIFilter.sepiaTone()
+    let context = CIContext()
     
     var body: some View {
-        VStack {
-            image?
-                .resizable()
-                .scaledToFit()
+        NavigationStack {
+            VStack {
+                Spacer()
+                
+                PhotosPicker(selection: $selectedItem) {
+                    if let processedImage {
+                        processedImage
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        ContentUnavailableView("No picture", systemImage: "photo.badge.plus", description: Text("Tap to import a photo"))
+                    }
+                }
+                .buttonStyle(.plain)
+                .onChange(of: selectedItem, loadImage)
+                
+                Spacer()
+                
+                HStack {
+                    Text("Intensity")
+                    Slider(value: $filterIntensity)
+                        .onChange(of: filterIntensity, applyProcessing)
+                }
+                
+                HStack {
+                    Button("Change Filter", action: changeFilter)
+                        // change filter
+                    
+                    Spacer()
+                    // share the picture
+                }
+            }
+            .padding([.horizontal, .bottom])
+            .navigationTitle("Instafilter")
         }
-        .onAppear(perform: loadImage)
+    }
+    
+    func changeFilter() {
+        
     }
     
     func loadImage() {
-        let inputImage = UIImage(resource: .example)
-        let beginImage = CIImage(image: inputImage)
-
-        let context = CIContext()
-        let currentFilter = CIFilter.pixellate()
+        Task {
+            guard let imageData = try await selectedItem?.loadTransferable(type: Data.self) else { return }
+            guard let inputImage = UIImage(data: imageData) else { return }
+            
+            let beginImage = CIImage(image: inputImage)
+            currentFilter.setValue(beginImage, forKey: kCIInputImageKey)
+            applyProcessing()
+        }
+    }
+    
+    func applyProcessing() {
+        currentFilter.intensity = Float(filterIntensity)
         
-        currentFilter.inputImage = beginImage
-
-        let amount = 1.0
-
-        let inputKeys = currentFilter.inputKeys
-
-        if inputKeys.contains(kCIInputIntensityKey) {
-            currentFilter.setValue(amount, forKey: kCIInputIntensityKey) }
-        if inputKeys.contains(kCIInputRadiusKey) { currentFilter.setValue(amount * 200, forKey: kCIInputRadiusKey) }
-        if inputKeys.contains(kCIInputScaleKey) { currentFilter.setValue(amount * 10, forKey: kCIInputScaleKey) }
-        
-        // get a CIImage from our filter or exit if that fails
         guard let outputImage = currentFilter.outputImage else { return }
-
-        // attempt to get a CGImage from our CIImage
         guard let cgImage = context.createCGImage(outputImage, from: outputImage.extent) else { return }
-
-        // convert that to a UIImage
+        
         let uiImage = UIImage(cgImage: cgImage)
-
-        // and convert that to a SwiftUI image
-        image = Image(uiImage: uiImage)
+        processedImage = Image(uiImage: uiImage)
     }
 }
 
